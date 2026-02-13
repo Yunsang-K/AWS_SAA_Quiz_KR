@@ -455,6 +455,7 @@ export default {
       const selectedSorted = [...this.selectedChoices].sort().join(',')
       const correctSorted = [...this.question.answers].sort().join(',')
       const isCorrect = selectedSorted === correctSorted
+      const questionId = this.question.id
 
       this.stats.totalAnswered += 1
       if (isCorrect) this.stats.totalCorrect += 1
@@ -466,11 +467,17 @@ export default {
         if (isCorrect) this.mockCorrect += 1
       }
 
-      const questionId = this.question.id
       if (!isCorrect) {
         if (!this.wrongAnswers.includes(questionId)) this.wrongAnswers.push(questionId)
       } else if (this.wrongPolicy === 'remove_on_correct') {
         this.wrongAnswers = this.wrongAnswers.filter(id => id !== questionId)
+      }
+
+      if (this.viewWrongOnly && !this.isMockMode && this.wrongAnswers.length === 0) {
+        this.viewWrongOnly = false
+        this.applyQuestionSetFromState()
+        const fullIndex = this.fullQuestions.findIndex(item => item.id === questionId)
+        this.current = fullIndex >= 0 ? fullIndex : 0
       }
 
       this.persistUserData()
