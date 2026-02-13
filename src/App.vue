@@ -1,8 +1,5 @@
 <template>
   <div class="app-shell">
-    <div class="bg-orb orb-a"></div>
-    <div class="bg-orb orb-b"></div>
-
     <header class="top-header" v-if="isLoggedIn">
       <div>
         <p class="eyebrow">AWS SAA-C03</p>
@@ -140,12 +137,12 @@ onMounted(async () => {
 <style>
 :root {
   color-scheme: light;
-  --bg: #f4f7ff;
+  --bg: #f8fafc;
   --ink: #0f172a;
   --muted: #64748b;
-  --line: #dbe5f2;
+  --line: #e2e8f0;
   --card: #ffffff;
-  --primary: #2563eb;
+  --primary: #1d4ed8;
   --primary-strong: #1d4ed8;
   --danger: #e11d48;
 }
@@ -155,7 +152,7 @@ body {
   margin: 0;
   font-family: 'Pretendard', 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
   color: var(--ink);
-  background: radial-gradient(circle at top right, #dbeafe 0%, var(--bg) 40%, #eff6ff 100%);
+  background: #f8fafc;
 }
 
 .app-shell {
@@ -164,16 +161,6 @@ body {
   margin: 0 auto;
   padding: 1.1rem 1rem 2rem;
 }
-.bg-orb {
-  position: fixed;
-  border-radius: 999px;
-  filter: blur(70px);
-  pointer-events: none;
-  z-index: -1;
-}
-.orb-a { width: 240px; height: 240px; background: #93c5fd66; right: 8%; top: 40px; }
-.orb-b { width: 180px; height: 180px; background: #c4b5fd66; left: 5%; bottom: 15%; }
-
 .top-header {
   display: flex;
   justify-content: space-between;
@@ -181,9 +168,8 @@ body {
   margin-bottom: 1rem;
   padding: 1rem 1.1rem;
   border: 1px solid var(--line);
-  border-radius: 16px;
-  background: #ffffffcc;
-  backdrop-filter: blur(6px);
+  border-radius: 14px;
+  background: #fff;
 }
 .top-title { margin: 0; font-size: 1.15rem; }
 .eyebrow { margin: 0 0 0.15rem; color: var(--muted); font-size: 0.78rem; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; }
