@@ -1,525 +1,327 @@
 <template>
   <div class="app-shell">
+    <div class="bg-orb orb-a"></div>
+    <div class="bg-orb orb-b"></div>
+
     <header class="top-header" v-if="isLoggedIn">
-      <div><strong>{{ currentUser }}</strong> 로그인됨</div>
-      <button @click="logout">로그아웃</button>
+      <div>
+        <p class="eyebrow">AWS SAA-C03</p>
+        <h2 class="top-title"><strong>{{ currentUser }}</strong> 님의 학습 대시보드</h2>
+      </div>
+      <button class="btn btn-secondary" @click="handleLogout">로그아웃</button>
     </header>
 
-    <div v-if="!isLoggedIn" class="login-panel">
-      <h3>로그인</h3>
-      <div class="row">
-        <input v-model.trim="loginId" placeholder="로그인 ID 입력" @keyup.enter="login" />
-        <button @click="login" :disabled="!loginId">시작</button>
-      </div>
-      <p class="muted">ID별로 오답, 정답률, 마지막 문제 위치를 저장합니다.</p>
-    </div>
+    <LoginForm
+      v-if="!isLoggedIn"
+      v-model:login-id="loginId"
+      v-model:password="password"
+      :show-password="showPassword"
+      :login-error="loginError"
+      :is-login-disabled="isLoginDisabled"
+      @toggle-password="showPassword = !showPassword"
+      @submit="handleLogin"
+    />
 
-    <div v-else class="content-layout">
-      <aside class="left-sidebar">
-        <section class="card">
-          <h3>모의고사</h3>
-          <div class="row">
-            <input
-              type="number"
-              min="1"
-              :max="fullQuestions.length"
-              v-model.number="mockSizeInput"
-              placeholder="문항 수"
-            />
-            <button @click="startMockExam">시작</button>
-          </div>
-          <button v-if="isMockMode" @click="finishMockExam">모의고사 종료</button>
-          <p v-if="isMockMode" class="muted">진행: {{ current + 1 }} / {{ questions.length }}</p>
-
-          <div v-if="lastMockResult" class="result-box">
-            <p><strong>최근 모의고사</strong></p>
-            <p>{{ lastMockResult.correct }} / {{ lastMockResult.size }} ({{ lastMockResult.accuracy }}%)</p>
-          </div>
-        </section>
-
-        <section class="card">
-          <h3>틀린 문제 번호</h3>
-          <p>{{ wrongAnswers.join(', ') || '없음' }}</p>
-          <button v-if="wrongAnswers.length" @click="toggleWrongOnly">
-            {{ viewWrongOnly ? '전체 문제 보기' : '틀린 문제만 보기' }}
-          </button>
-        </section>
-      </aside>
-
-      <main class="main-area">
-        <progress :value="safeProgressValue" :max="safeProgressMax"></progress>
-        <p>진행률: {{ safeProgressValue }} / {{ safeProgressMax }}</p>
-
-        <div v-if="question">
-          <p>{{ question.question }}</p>
-          <div v-for="(text, key) in question.choices" :key="key">
-            <button :class="buttonClass(key)" @click="toggleChoice(key)">
-              {{ key }}. {{ text }}
-            </button>
-          </div>
-
-          <div v-if="showAnswer">
-            <p><strong>정답:</strong> {{ question.answers.join(', ') }}</p>
-            <button @click="showExplanation = true">해설 보기</button>
-          </div>
-
-          <div v-if="showExplanation" class="mt">
-            <p v-for="(exp, i) in question.explanations" :key="i">• {{ exp }}</p>
-          </div>
-
-          <div class="row mt">
-            <button @click="prevQuestion" :disabled="current === 0">이전 문제</button>
-            <button @click="nextQuestion" :disabled="current + 1 >= questions.length">다음 문제</button>
-          </div>
-        </div>
-
-        <div v-else class="card mt-lg">
-          <p>표시할 문제가 없습니다.</p>
-        </div>
-
-        <div class="card mt-lg">
-          <h3>문제 번호 이동</h3>
-          <div class="row">
-            <input type="number" v-model.number="jumpNumber" placeholder="번호 입력" min="1" :max="questions.length || 1" />
-            <button @click="jumpTo">이동</button>
-          </div>
-        </div>
-
-        <div class="card">
-          <p><strong>누적 정답률:</strong> {{ accuracyRate }}% ({{ stats.totalCorrect }}/{{ stats.totalAnswered }})</p>
-          <progress :value="Number(accuracyRate)" max="100"></progress>
-
-          <p class="mt"><strong>최근 {{ recentWindowSize }}문제 정답률:</strong> {{ recentAccuracyRate }}%</p>
-          <div class="recent-strip">
-            <span
-              v-for="(result, idx) in stats.recentResults"
-              :key="idx"
-              :class="['dot', result ? 'dot-correct' : 'dot-incorrect']"
-            ></span>
-          </div>
-
-          <label>
-            오답 정책:
-            <select v-model="wrongPolicy" @change="persistUserData">
-              <option value="keep_history">틀리면 계속 유지</option>
-              <option value="remove_on_correct">정답 시 오답 제거</option>
-            </select>
-          </label>
-          <p class="muted">DB 상태: {{ dbEnabled ? dbStatus : '로컬 저장 모드' }}</p>
-
-          <div class="mt" v-if="stats.mockExamHistory.length">
-            <p><strong>최근 모의고사 이력</strong></p>
-            <ul>
-              <li v-for="(exam, i) in stats.mockExamHistory.slice(0, 5)" :key="i">
-                {{ exam.date }} - {{ exam.correct }}/{{ exam.size }} ({{ exam.accuracy }}%)
-              </li>
-            </ul>
-          </div>
-        </div>
-      </main>
-    </div>
+    <QuizLayout
+      v-else
+      :questions="questions"
+      :current="current"
+      :question="question"
+      :wrong-answers="wrongAnswers"
+      :view-wrong-only="viewWrongOnly"
+      :stats="stats"
+      :mock-size-input="mockSizeInput"
+      :full-length="fullQuestionCount"
+      :is-mock-mode="isMockMode"
+      :last-mock-result="lastMockResult"
+      :safe-progress-max="safeProgressMax"
+      :safe-progress-value="safeProgressValue"
+      :show-answer="showAnswer"
+      :show-explanation="showExplanation"
+      :jump-number="jumpNumber"
+      :button-class="buttonClass"
+      :accuracy-rate="accuracyRate"
+      :recent-accuracy-rate="recentAccuracyRate"
+      :recent-window-size="RECENT_WINDOW_SIZE"
+      :wrong-policy="wrongPolicy"
+      :db-enabled="dbEnabled"
+      :db-status="dbStatus"
+      @update:mock-size="mockSizeInput = $event"
+      @start-mock="startMockExam"
+      @finish-mock="finishMockExam"
+      @toggle-wrong-only="toggleWrongOnly"
+      @toggle-choice="toggleChoice"
+      @show-explanation="showExplanation = true"
+      @prev-question="prevQuestion"
+      @next-question="nextQuestion"
+      @update:jump-number="jumpNumber = $event"
+      @jump-to="jumpTo"
+      @update:wrong-policy="updateWrongPolicy"
+    />
   </div>
 </template>
 
-<script>
-import questions from './questions.json'
+<script setup>
+import { onMounted } from 'vue'
+import LoginForm from './components/LoginForm.vue'
+import QuizLayout from './components/QuizLayout.vue'
+import { useAuth } from './composables/useAuth'
+import { useQuiz } from './composables/useQuiz'
 
-const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL
-const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY
-const RECENT_WINDOW_SIZE = 20
+const {
+  loginId,
+  password,
+  showPassword,
+  loginError,
+  currentUser,
+  isLoggedIn,
+  isLoginDisabled,
+  initializeFromStorage,
+  login,
+  logout
+} = useAuth()
 
-export default {
-  data() {
-    return {
-      fullQuestions: questions,
-      questions,
-      current: 0,
-      selectedChoices: [],
-      showAnswer: false,
-      showExplanation: false,
-      wrongAnswers: [],
-      viewWrongOnly: false,
-      jumpNumber: null,
-      loginId: '',
-      currentUser: '',
-      isLoggedIn: false,
-      dbEnabled: Boolean(SUPABASE_URL && SUPABASE_ANON_KEY),
-      dbStatus: '대기',
-      wrongPolicy: 'keep_history',
-      stats: {
-        totalAnswered: 0,
-        totalCorrect: 0,
-        recentResults: [],
-        mockExamHistory: []
-      },
-      recentWindowSize: RECENT_WINDOW_SIZE,
-      isMockMode: false,
-      mockSizeInput: 20,
-      mockQuestionIds: [],
-      mockAnswered: 0,
-      mockCorrect: 0,
-      lastMockResult: null
-    }
-  },
-  computed: {
-    question() {
-      return this.questions[this.current]
-    },
-    accuracyRate() {
-      if (!this.stats.totalAnswered) return '0.0'
-      return ((this.stats.totalCorrect / this.stats.totalAnswered) * 100).toFixed(1)
-    },
-    recentAccuracyRate() {
-      if (!this.stats.recentResults.length) return '0.0'
-      const correctCount = this.stats.recentResults.filter(Boolean).length
-      return ((correctCount / this.stats.recentResults.length) * 100).toFixed(1)
-    },
-    safeProgressMax() {
-      return this.questions.length || 1
-    },
-    safeProgressValue() {
-      if (!this.questions.length) return 0
-      return this.current + 1
-    }
-  },
-  mounted() {
-    const savedUser = localStorage.getItem('awsQuiz:currentUser')
-    if (savedUser) {
-      this.loginId = savedUser
-      this.login()
-    }
-  },
-  methods: {
-    userKey(suffix) {
-      return `awsQuiz:${this.currentUser}:${suffix}`
-    },
-    normalizeStats(payload) {
-      return {
-        totalAnswered: payload.totalAnswered || 0,
-        totalCorrect: payload.totalCorrect || 0,
-        recentResults: payload.recentResults || [],
-        mockExamHistory: payload.mockExamHistory || []
-      }
-    },
-    login() {
-      if (!this.loginId) return
-      this.currentUser = this.loginId
-      this.isLoggedIn = true
-      localStorage.setItem('awsQuiz:currentUser', this.currentUser)
-      this.loadUserData()
-      this.applyQuestionSetFromState()
-      this.restoreCurrentIndex()
-      if (this.dbEnabled) this.syncFromDb()
-    },
-    logout() {
-      this.isLoggedIn = false
-      this.currentUser = ''
-      this.loginId = ''
-      localStorage.removeItem('awsQuiz:currentUser')
-      this.questions = this.fullQuestions
-      this.current = 0
-      this.resetSession()
-    },
-    loadUserData() {
-      const wrong = localStorage.getItem(this.userKey('wrongAnswers'))
-      const stats = localStorage.getItem(this.userKey('stats'))
-      const settings = localStorage.getItem(this.userKey('settings'))
+const {
+  RECENT_WINDOW_SIZE,
+  questions,
+  fullQuestionCount,
+  current,
+  question,
+  showAnswer,
+  showExplanation,
+  wrongAnswers,
+  viewWrongOnly,
+  jumpNumber,
+  dbEnabled,
+  dbStatus,
+  wrongPolicy,
+  stats,
+  isMockMode,
+  mockSizeInput,
+  lastMockResult,
+  safeProgressMax,
+  safeProgressValue,
+  accuracyRate,
+  recentAccuracyRate,
+  persistUserData,
+  startMockExam,
+  finishMockExam,
+  toggleWrongOnly,
+  toggleChoice,
+  buttonClass,
+  prevQuestion,
+  nextQuestion,
+  jumpTo,
+  onUserLogin,
+  onUserLogout
+} = useQuiz(currentUser)
 
-      this.wrongAnswers = wrong ? JSON.parse(wrong) : []
-      this.stats = this.normalizeStats(stats ? JSON.parse(stats) : {})
-
-      const parsed = settings ? JSON.parse(settings) : {}
-      this.wrongPolicy = parsed.wrongPolicy || 'keep_history'
-      this.viewWrongOnly = Boolean(parsed.viewWrongOnly)
-      this.isMockMode = Boolean(parsed.isMockMode)
-      this.mockQuestionIds = parsed.mockQuestionIds || []
-      this.mockAnswered = parsed.mockAnswered || 0
-      this.mockCorrect = parsed.mockCorrect || 0
-      this.lastMockResult = parsed.lastMockResult || null
-    },
-    persistUserData() {
-      if (!this.currentUser) return
-      localStorage.setItem(this.userKey('wrongAnswers'), JSON.stringify(this.wrongAnswers))
-      localStorage.setItem(this.userKey('stats'), JSON.stringify(this.stats))
-      localStorage.setItem(
-        this.userKey('settings'),
-        JSON.stringify({
-          wrongPolicy: this.wrongPolicy,
-          viewWrongOnly: this.viewWrongOnly,
-          isMockMode: this.isMockMode,
-          mockQuestionIds: this.mockQuestionIds,
-          mockAnswered: this.mockAnswered,
-          mockCorrect: this.mockCorrect,
-          lastMockResult: this.lastMockResult
-        })
-      )
-      localStorage.setItem(this.userKey('currentIndex'), String(this.current))
-    },
-    applyQuestionSetFromState() {
-      if (this.isMockMode && this.mockQuestionIds.length) {
-        const set = new Set(this.mockQuestionIds)
-        this.questions = this.fullQuestions.filter(q => set.has(q.id))
-        return
-      }
-      this.questions = this.viewWrongOnly
-        ? this.fullQuestions.filter(q => this.wrongAnswers.includes(q.id))
-        : this.fullQuestions
-    },
-    restoreCurrentIndex() {
-      const saved = Number(localStorage.getItem(this.userKey('currentIndex')) || 0)
-      this.current = Number.isInteger(saved) ? saved : 0
-      if (this.current < 0 || this.current >= this.questions.length) this.current = 0
-    },
-    async syncFromDb() {
-      if (!this.dbEnabled || !this.currentUser) return
-      try {
-        this.dbStatus = '불러오는 중...'
-        const url = `${SUPABASE_URL}/rest/v1/quiz_user_state?user_id=eq.${encodeURIComponent(this.currentUser)}&select=user_id,wrong_answers,total_answered,total_correct,recent_results,wrong_policy,mock_exam_history`
-        const res = await fetch(url, {
-          headers: {
-            apikey: SUPABASE_ANON_KEY,
-            Authorization: `Bearer ${SUPABASE_ANON_KEY}`
-          }
-        })
-        if (!res.ok) throw new Error('DB 조회 실패')
-        const rows = await res.json()
-        if (rows.length) {
-          const row = rows[0]
-          this.wrongAnswers = row.wrong_answers || []
-          this.stats = this.normalizeStats({
-            totalAnswered: row.total_answered,
-            totalCorrect: row.total_correct,
-            recentResults: row.recent_results,
-            mockExamHistory: row.mock_exam_history
-          })
-          this.wrongPolicy = row.wrong_policy || 'keep_history'
-          this.applyQuestionSetFromState()
-          this.restoreCurrentIndex()
-          this.persistUserData()
-        }
-        this.dbStatus = '불러오기 완료'
-      } catch {
-        this.dbStatus = '불러오기 실패(로컬 사용 중)'
-      }
-    },
-    async syncToDb() {
-      if (!this.dbEnabled || !this.currentUser) return
-      try {
-        this.dbStatus = '저장 중...'
-        const payload = {
-          user_id: this.currentUser,
-          wrong_answers: this.wrongAnswers,
-          total_answered: this.stats.totalAnswered,
-          total_correct: this.stats.totalCorrect,
-          recent_results: this.stats.recentResults,
-          wrong_policy: this.wrongPolicy,
-          mock_exam_history: this.stats.mockExamHistory
-        }
-        const res = await fetch(`${SUPABASE_URL}/rest/v1/quiz_user_state`, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            apikey: SUPABASE_ANON_KEY,
-            Authorization: `Bearer ${SUPABASE_ANON_KEY}`,
-            Prefer: 'resolution=merge-duplicates'
-          },
-          body: JSON.stringify(payload)
-        })
-        if (!res.ok) throw new Error('DB 저장 실패')
-        this.dbStatus = '저장 완료'
-      } catch {
-        this.dbStatus = '저장 실패'
-      }
-    },
-    startMockExam() {
-      const n = Number(this.mockSizeInput)
-      if (!n || n < 1 || n > this.fullQuestions.length) {
-        alert('유효한 문항 수를 입력하세요.')
-        return
-      }
-      const pool = [...this.fullQuestions]
-      for (let i = pool.length - 1; i > 0; i--) {
-        const j = Math.floor(Math.random() * (i + 1))
-        ;[pool[i], pool[j]] = [pool[j], pool[i]]
-      }
-      const selected = pool.slice(0, n)
-      this.mockQuestionIds = selected.map(q => q.id)
-      this.questions = selected
-      this.isMockMode = true
-      this.viewWrongOnly = false
-      this.mockAnswered = 0
-      this.mockCorrect = 0
-      this.current = 0
-      this.resetSession()
-      this.persistUserData()
-    },
-    finishMockExam() {
-      if (this.isMockMode) {
-        const size = this.questions.length
-        const accuracy = this.mockAnswered ? ((this.mockCorrect / this.mockAnswered) * 100).toFixed(1) : '0.0'
-        this.lastMockResult = {
-          date: new Date().toLocaleString('ko-KR'),
-          size,
-          correct: this.mockCorrect,
-          answered: this.mockAnswered,
-          accuracy
-        }
-        this.stats.mockExamHistory.unshift(this.lastMockResult)
-        this.stats.mockExamHistory = this.stats.mockExamHistory.slice(0, 20)
-      }
-
-      this.isMockMode = false
-      this.mockQuestionIds = []
-      this.mockAnswered = 0
-      this.mockCorrect = 0
-      this.applyQuestionSetFromState()
-      this.current = 0
-      this.resetSession()
-      this.persistUserData()
-      if (this.dbEnabled) this.syncToDb()
-    },
-    toggleWrongOnly() {
-      this.viewWrongOnly = !this.viewWrongOnly
-      this.isMockMode = false
-      this.mockQuestionIds = []
-      this.mockAnswered = 0
-      this.mockCorrect = 0
-      this.applyQuestionSetFromState()
-      this.current = 0
-      this.resetSession()
-      this.persistUserData()
-    },
-    toggleChoice(choice) {
-      if (this.showAnswer || !this.question) return
-      const correctCount = this.question.answers.length
-      if (this.selectedChoices.includes(choice)) {
-        this.selectedChoices = this.selectedChoices.filter(c => c !== choice)
-      } else {
-        if (this.selectedChoices.length >= correctCount) return
-        this.selectedChoices.push(choice)
-      }
-      if (this.selectedChoices.length === correctCount) this.submitAnswer()
-    },
-    submitAnswer() {
-      this.showAnswer = true
-      const selectedSorted = [...this.selectedChoices].sort().join(',')
-      const correctSorted = [...this.question.answers].sort().join(',')
-      const isCorrect = selectedSorted === correctSorted
-
-      this.stats.totalAnswered += 1
-      if (isCorrect) this.stats.totalCorrect += 1
-      this.stats.recentResults.push(isCorrect)
-      if (this.stats.recentResults.length > RECENT_WINDOW_SIZE) this.stats.recentResults.shift()
-
-      if (this.isMockMode) {
-        this.mockAnswered += 1
-        if (isCorrect) this.mockCorrect += 1
-      }
-
-      const questionId = this.question.id
-      if (!isCorrect) {
-        if (!this.wrongAnswers.includes(questionId)) this.wrongAnswers.push(questionId)
-      } else if (this.wrongPolicy === 'remove_on_correct') {
-        this.wrongAnswers = this.wrongAnswers.filter(id => id !== questionId)
-      }
-
-      this.persistUserData()
-      if (this.dbEnabled) this.syncToDb()
-    },
-    buttonClass(choice) {
-      if (!this.showAnswer) return this.selectedChoices.includes(choice) ? 'selected' : ''
-      const isCorrect = this.question.answers.includes(choice)
-      const isSelected = this.selectedChoices.includes(choice)
-      if (isCorrect) return 'correct'
-      if (isSelected && !isCorrect) return 'incorrect'
-      return ''
-    },
-    nextQuestion() {
-      if (this.current + 1 < this.questions.length) {
-        this.current += 1
-        this.resetSession()
-        this.persistUserData()
-      }
-    },
-    prevQuestion() {
-      if (this.current > 0) {
-        this.current -= 1
-        this.resetSession()
-        this.persistUserData()
-      }
-    },
-    goTo(index) {
-      this.current = index
-      this.resetSession()
-      this.persistUserData()
-    },
-    jumpTo() {
-      if (this.jumpNumber && this.jumpNumber >= 1 && this.jumpNumber <= this.questions.length) {
-        this.goTo(this.jumpNumber - 1)
-      } else {
-        alert('올바른 문제 번호를 입력하세요.')
-      }
-    },
-    resetSession() {
-      this.selectedChoices = []
-      this.showAnswer = false
-      this.showExplanation = false
-    }
-  }
+const handleLogin = async () => {
+  const ok = login()
+  if (ok) await onUserLogin()
 }
+
+const handleLogout = () => {
+  logout()
+  onUserLogout()
+}
+
+const updateWrongPolicy = value => {
+  wrongPolicy.value = value
+  persistUserData()
+}
+
+onMounted(async () => {
+  initializeFromStorage()
+  if (isLoggedIn.value) await onUserLogin()
+})
 </script>
 
-<style scoped>
-.app-shell { max-width: 1200px; margin: 0 auto; }
+<style>
+:root {
+  color-scheme: light;
+  --bg: #f4f7ff;
+  --ink: #0f172a;
+  --muted: #64748b;
+  --line: #dbe5f2;
+  --card: #ffffff;
+  --primary: #2563eb;
+  --primary-strong: #1d4ed8;
+  --danger: #e11d48;
+}
+
+* { box-sizing: border-box; }
+body {
+  margin: 0;
+  font-family: 'Pretendard', 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  color: var(--ink);
+  background: radial-gradient(circle at top right, #dbeafe 0%, var(--bg) 40%, #eff6ff 100%);
+}
+
+.app-shell {
+  position: relative;
+  max-width: 1220px;
+  margin: 0 auto;
+  padding: 1.1rem 1rem 2rem;
+}
+.bg-orb {
+  position: fixed;
+  border-radius: 999px;
+  filter: blur(70px);
+  pointer-events: none;
+  z-index: -1;
+}
+.orb-a { width: 240px; height: 240px; background: #93c5fd66; right: 8%; top: 40px; }
+.orb-b { width: 180px; height: 180px; background: #c4b5fd66; left: 5%; bottom: 15%; }
+
 .top-header {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  margin-bottom: 12px;
-  padding: 8px 12px;
-  border: 1px solid #d1d5db;
-  border-radius: 8px;
-  background: #fff;
+  margin-bottom: 1rem;
+  padding: 1rem 1.1rem;
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  background: #ffffffcc;
+  backdrop-filter: blur(6px);
 }
-.content-layout {
-  display: grid;
-  grid-template-columns: 280px 1fr;
-  gap: 1rem;
-}
-.left-sidebar { display: flex; flex-direction: column; gap: 0.8rem; }
-.main-area { min-width: 0; }
-.card {
-  padding: 0.8rem;
-  border: 1px solid #d1d5db;
-  border-radius: 8px;
-  background: #fff;
-}
-.result-box {
-  margin-top: 0.8rem;
-  padding-top: 0.8rem;
-  border-top: 1px dashed #d1d5db;
-}
-.login-panel {
-  max-width: 480px;
-  margin: 2rem auto;
-  padding: 1rem;
-  border: 1px solid #d1d5db;
-  border-radius: 8px;
-  background: #fff;
-}
-.row { display: flex; gap: 0.5rem; align-items: center; flex-wrap: wrap; }
-.mt { margin-top: 1rem; }
-.mt-lg { margin-top: 2rem; }
-.muted { color: #6b7280; font-size: 0.9rem; }
-.recent-strip { display: flex; gap: 4px; margin: 0.4rem 0 0.8rem; flex-wrap: wrap; }
-.dot { width: 10px; height: 10px; border-radius: 999px; display: inline-block; }
-.dot-correct { background: #10b981; }
-.dot-incorrect { background: #ef4444; }
-button.selected { border: 2px solid #3b82f6; background-color: #e0f2fe; }
-button.correct { background-color: #d1fae5; border: 2px solid #10b981; }
-button.incorrect { background-color: #fee2e2; border: 2px solid #ef4444; }
+.top-title { margin: 0; font-size: 1.15rem; }
+.eyebrow { margin: 0 0 0.15rem; color: var(--muted); font-size: 0.78rem; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; }
 
-@media (max-width: 900px) {
+.content-layout { display: grid; grid-template-columns: minmax(0, 1fr) 320px; gap: 1rem; }
+.main-area, .left-sidebar { min-width: 0; display: flex; flex-direction: column; gap: 1rem; }
+.card {
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  padding: 1rem;
+  box-shadow: 0 8px 24px #0f172a0a;
+}
+.panel-card { padding: 0.95rem; }
+.question-card { padding: 1.1rem; }
+
+.panel-head { display: flex; align-items: center; justify-content: space-between; gap: 0.5rem; margin-bottom: 0.65rem; }
+.panel-head h3 { margin: 0; font-size: 1rem; }
+.chip {
+  display: inline-flex;
+  align-items: center;
+  border-radius: 999px;
+  font-size: 0.72rem;
+  background: #dbeafe;
+  color: #1d4ed8;
+  padding: 0.2rem 0.55rem;
+  font-weight: 700;
+}
+.chip-soft { background: #eef2ff; color: #4f46e5; }
+
+.progress-head { display: grid; gap: 0.55rem; margin-bottom: 0.85rem; }
+.question-text { margin: 0 0 0.9rem; font-size: 1.06rem; line-height: 1.55; font-weight: 600; }
+.choice-row { margin-bottom: 0.52rem; }
+.choice-key {
+  width: 26px;
+  height: 26px;
+  border-radius: 999px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.8rem;
+  background: #e2e8f0;
+  color: #0f172a;
+}
+.answer-box, .explain-box, .empty-box, .metric-box {
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 0.7rem 0.8rem;
+  background: #f8fbff;
+}
+.explain-box p { margin: 0.2rem 0; }
+.metric-title { margin: 0; font-size: 0.82rem; color: var(--muted); font-weight: 600; }
+.metric-value { margin: 0.25rem 0 0; font-size: 1rem; font-weight: 700; }
+.wrong-list { margin: 0.25rem 0 0; line-height: 1.45; }
+
+.field-stack { margin-top: 0.85rem; }
+.field-label { display: block; margin-bottom: 0.42rem; font-size: 0.86rem; font-weight: 700; color: #334155; }
+.input {
+  width: 100%;
+  padding: 0.66rem 0.75rem;
+  border: 1px solid #cfdced;
+  border-radius: 12px;
+  background: #fff;
+  font-size: 0.93rem;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+.input:focus {
+  outline: none;
+  border-color: #60a5fa;
+  box-shadow: 0 0 0 3px #bfdbfe;
+}
+.input-with-action { display: grid; grid-template-columns: 1fr auto; gap: 0.45rem; }
+.inline-row { display: flex; align-items: center; gap: 0.5rem; flex-wrap: wrap; }
+
+.btn {
+  border: 1px solid transparent;
+  border-radius: 12px;
+  padding: 0.6rem 0.85rem;
+  font-size: 0.9rem;
+  font-weight: 700;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+.btn:disabled { opacity: 0.45; cursor: not-allowed; }
+.btn-primary { background: var(--primary); color: #fff; }
+.btn-primary:hover:not(:disabled) { background: var(--primary-strong); }
+.btn-secondary { background: #f8fafc; color: #334155; border-color: #cfdced; }
+.btn-secondary:hover:not(:disabled) { background: #f1f5f9; }
+.btn-danger { background: var(--danger); color: #fff; }
+.btn-danger:hover:not(:disabled) { background: #be123c; }
+.btn-ghost { background: #fff; color: #334155; border-color: #cfdced; }
+.btn-choice {
+  width: 100%;
+  display: grid;
+  grid-template-columns: auto 1fr;
+  align-items: center;
+  gap: 0.65rem;
+  text-align: left;
+  background: #fff;
+  border-color: #d5e2f2;
+}
+.btn-choice:hover:not(:disabled) { border-color: #93c5fd; background: #f8fbff; }
+.btn-choice.selected { border: 2px solid #3b82f6; background: #eff6ff; }
+.btn-choice.correct { border: 2px solid #16a34a; background: #f0fdf4; }
+.btn-choice.incorrect { border: 2px solid #ef4444; background: #fef2f2; }
+
+.auth-shell { display: grid; place-items: center; min-height: 75vh; }
+.auth-card { width: min(94vw, 520px); padding: 1.25rem; }
+.auth-title { margin: 0.2rem 0 0.35rem; font-size: 1.5rem; }
+.auth-subtitle { margin: 0; color: var(--muted); line-height: 1.45; }
+.auth-submit { width: 100%; margin-top: 0.75rem; }
+.status-error {
+  margin: 0.65rem 0 0;
+  padding: 0.6rem 0.7rem;
+  border-radius: 10px;
+  background: #fff1f2;
+  border: 1px solid #fecdd3;
+  color: #be123c;
+  font-size: 0.88rem;
+}
+.helper-text { margin: 0; color: var(--muted); font-size: 0.82rem; }
+.muted-inline { color: var(--muted); font-weight: 500; font-size: 0.86rem; }
+.history-list { margin: 0.45rem 0 0; padding-left: 1rem; color: #334155; }
+.history-list li { margin-bottom: 0.3rem; font-size: 0.87rem; }
+.recent-strip { display: flex; flex-wrap: wrap; gap: 0.35rem; margin-top: 0.42rem; }
+.dot { width: 10px; height: 10px; border-radius: 999px; display: inline-block; }
+.dot-correct { background: #22c55e; }
+.dot-incorrect { background: #f43f5e; }
+.mt { margin-top: 0.9rem; }
+.mt-sm { margin-top: 0.45rem; }
+.mt-lg { margin-top: 1rem; }
+
+@media (max-width: 980px) {
   .content-layout { grid-template-columns: 1fr; }
+  .mobile-primary { order: -1; }
+}
+@media (max-width: 640px) {
+  .top-header { align-items: flex-start; flex-direction: column; gap: 0.75rem; }
+  .app-shell { padding: 0.75rem 0.7rem 1.5rem; }
 }
 </style>
