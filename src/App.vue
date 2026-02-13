@@ -6,12 +6,33 @@
     </header>
 
     <div v-if="!isLoggedIn" class="login-panel">
-      <h3>로그인</h3>
-      <div class="row">
-        <input v-model.trim="loginId" placeholder="로그인 ID 입력" @keyup.enter="login" />
-        <button @click="login" :disabled="!loginId">시작</button>
-      </div>
+      <h3 class="login-title">로그인</h3>
       <p class="muted">ID별로 오답, 정답률, 마지막 문제 위치를 저장합니다.</p>
+
+      <form class="login-form" @submit.prevent="login">
+        <label class="login-label" for="login-id">아이디</label>
+        <input
+          id="login-id"
+          v-model.trim="loginId"
+          class="login-input"
+          placeholder="로그인 ID 입력"
+          autocomplete="username"
+        />
+
+        <label class="login-label" for="login-password">비밀번호</label>
+        <input
+          id="login-password"
+          v-model="loginPassword"
+          class="login-input"
+          type="password"
+          placeholder="비밀번호 입력"
+          autocomplete="current-password"
+        />
+
+        <button type="submit" class="login-button" :disabled="!loginId || !loginPassword">시작</button>
+      </form>
+
+      <p v-if="loginError" class="error-message">{{ loginError }}</p>
     </div>
 
     <div v-else class="content-layout">
@@ -141,6 +162,8 @@ export default {
       viewWrongOnly: false,
       jumpNumber: null,
       loginId: '',
+      loginPassword: '',
+      loginError: '',
       currentUser: '',
       isLoggedIn: false,
       dbEnabled: Boolean(SUPABASE_URL && SUPABASE_ANON_KEY),
@@ -182,13 +205,6 @@ export default {
       return this.current + 1
     }
   },
-  mounted() {
-    const savedUser = localStorage.getItem('awsQuiz:currentUser')
-    if (savedUser) {
-      this.loginId = savedUser
-      this.login()
-    }
-  },
   methods: {
     userKey(suffix) {
       return `awsQuiz:${this.currentUser}:${suffix}`
@@ -202,7 +218,15 @@ export default {
       }
     },
     login() {
-      if (!this.loginId) return
+      if (!this.loginId || !this.loginPassword) return
+      if (!(this.loginId === 'yun' && this.loginPassword === 'yunsang123')) {
+        this.loginError = '아이디 또는 비밀번호가 올바르지 않습니다.'
+        this.isLoggedIn = false
+        this.currentUser = ''
+        localStorage.removeItem('awsQuiz:currentUser')
+        return
+      }
+      this.loginError = ''
       this.currentUser = this.loginId
       this.isLoggedIn = true
       localStorage.setItem('awsQuiz:currentUser', this.currentUser)
@@ -215,6 +239,8 @@ export default {
       this.isLoggedIn = false
       this.currentUser = ''
       this.loginId = ''
+      this.loginPassword = ''
+      this.loginError = ''
       localStorage.removeItem('awsQuiz:currentUser')
       this.questions = this.fullQuestions
       this.current = 0
@@ -500,17 +526,42 @@ export default {
   border-top: 1px dashed #d1d5db;
 }
 .login-panel {
-  max-width: 480px;
+  max-width: 420px;
   margin: 2rem auto;
-  padding: 1rem;
+  padding: 1.25rem;
+  border: 1px solid #d1d5db;
+  border-radius: 12px;
+  background: #fff;
+  box-shadow: 0 6px 20px rgba(15, 23, 42, 0.06);
+}
+.login-title { margin: 0 0 0.4rem; }
+.login-form { display: grid; gap: 0.55rem; margin-top: 0.8rem; }
+.login-label { font-size: 0.9rem; font-weight: 600; color: #374151; }
+.login-input {
+  width: 100%;
+  min-height: 44px;
+  padding: 0.65rem 0.75rem;
   border: 1px solid #d1d5db;
   border-radius: 8px;
-  background: #fff;
+  box-sizing: border-box;
 }
+.login-input:focus { outline: 2px solid #93c5fd; outline-offset: 1px; }
+.login-button {
+  width: 100%;
+  min-height: 44px;
+  margin-top: 0.4rem;
+  border: 0;
+  border-radius: 8px;
+  background: #2563eb;
+  color: #fff;
+  font-weight: 600;
+}
+.login-button:disabled { opacity: 0.55; cursor: not-allowed; }
 .row { display: flex; gap: 0.5rem; align-items: center; flex-wrap: wrap; }
 .mt { margin-top: 1rem; }
 .mt-lg { margin-top: 2rem; }
 .muted { color: #6b7280; font-size: 0.9rem; }
+.error-message { color: #dc2626; font-size: 0.9rem; margin-top: 0.7rem; }
 .recent-strip { display: flex; gap: 4px; margin: 0.4rem 0 0.8rem; flex-wrap: wrap; }
 .dot { width: 10px; height: 10px; border-radius: 999px; display: inline-block; }
 .dot-correct { background: #10b981; }
@@ -518,6 +569,13 @@ export default {
 button.selected { border: 2px solid #3b82f6; background-color: #e0f2fe; }
 button.correct { background-color: #d1fae5; border: 2px solid #10b981; }
 button.incorrect { background-color: #fee2e2; border: 2px solid #ef4444; }
+
+@media (max-width: 640px) {
+  .login-panel {
+    margin: 1rem 0.75rem;
+    padding: 1rem;
+  }
+}
 
 @media (max-width: 900px) {
   .content-layout { grid-template-columns: 1fr; }
