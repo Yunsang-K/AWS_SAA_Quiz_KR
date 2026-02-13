@@ -1,45 +1,111 @@
 <template>
   <div class="app-shell">
-    <header class="top-header" v-if="isLoggedIn">
-      <div><strong>{{ currentUser }}</strong> 로그인됨</div>
-      <button @click="logout">로그아웃</button>
+    <header class="top-header card" v-if="isLoggedIn">
+      <div>
+        <p class="eyebrow">AWS SAA-C03</p>
+        <h2 class="dashboard-title">{{ currentUser }} 님의 학습 대시보드</h2>
+      </div>
+      <button class="logout-button" @click="logout">로그아웃</button>
     </header>
 
     <div v-if="!isLoggedIn" class="login-panel">
-      <h3 class="login-title">로그인</h3>
-      <p class="muted">ID별로 오답, 정답률, 마지막 문제 위치를 저장합니다.</p>
+      <p class="eyebrow">AWS SAA QUIZ</p>
+      <h3 class="login-title">학습을 다시 시작해볼까요?</h3>
+      <p class="muted login-copy">로그인 후 오답, 정답률, 마지막 위치를 자동으로 복원합니다.</p>
 
       <form class="login-form" @submit.prevent="login">
-        <label class="login-label" for="login-id">아이디</label>
+        <label class="login-label" for="login-id">로그인 ID</label>
         <input
           id="login-id"
           v-model.trim="loginId"
           class="login-input"
-          placeholder="로그인 ID 입력"
+          placeholder="예: saa-lee"
           autocomplete="username"
         />
 
         <label class="login-label" for="login-password">비밀번호</label>
-        <input
-          id="login-password"
-          v-model="loginPassword"
-          class="login-input"
-          type="password"
-          placeholder="비밀번호 입력"
-          autocomplete="current-password"
-        />
+        <div class="row">
+          <input
+            id="login-password"
+            v-model="loginPassword"
+            class="login-input"
+            :type="showPassword ? 'text' : 'password'"
+            placeholder="비밀번호 입력"
+            autocomplete="current-password"
+          />
+          <button type="button" class="toggle-password" @click="showPassword = !showPassword">
+            {{ showPassword ? '숨김' : '표시' }}
+          </button>
+        </div>
 
-        <button type="submit" class="login-button" :disabled="!loginId || !loginPassword">시작</button>
+        <button type="submit" class="login-button" :disabled="!loginId || !loginPassword">Enter로 시작</button>
       </form>
 
       <p v-if="loginError" class="error-message">{{ loginError }}</p>
+      <p class="muted login-help">기본 비밀번호는 <strong>quiz1234</strong> 입니다. (VITE_APP_LOGIN_PASSWORD로 변경 가능)</p>
     </div>
 
     <div v-else class="content-layout">
-      <aside class="left-sidebar">
+      <main class="main-area">
+        <section class="card question-card">
+          <div class="progress-chip">Question {{ safeProgressValue }}/{{ safeProgressMax }}</div>
+          <progress :value="safeProgressValue" :max="safeProgressMax"></progress>
+
+          <div v-if="question" class="question-area">
+            <p class="question-copy">{{ question.question }}</p>
+            <div v-for="(text, key) in question.choices" :key="key">
+              <button :class="['choice-button', buttonClass(key)]" @click="toggleChoice(key)">
+              {{ key }}. {{ text }}
+            </button>
+            </div>
+
+            <div v-if="showAnswer">
+              <p><strong>정답:</strong> {{ question.answers.join(', ') }}</p>
+              <button class="secondary-button" @click="showExplanation = true">해설 보기</button>
+            </div>
+
+            <div v-if="showExplanation" class="mt">
+              <p v-for="(exp, i) in question.explanations" :key="i">• {{ exp }}</p>
+            </div>
+
+            <div class="stack-buttons mt">
+              <button class="secondary-button" @click="prevQuestion" :disabled="current === 0">이전 문제</button>
+              <button class="secondary-button" @click="nextQuestion" :disabled="current + 1 >= questions.length">다음 문제</button>
+            </div>
+          </div>
+
+          <div v-else class="card mt-lg">
+            <p>표시할 문제가 없습니다.</p>
+          </div>
+        </section>
+
+        <section class="card mt-lg">
+          <h3>문제 번호 이동</h3>
+          <div class="stack-buttons">
+            <input type="number" v-model.number="jumpNumber" placeholder="번호 입력" min="1" :max="questions.length || 1" />
+            <button class="primary-button" @click="jumpTo">이동</button>
+          </div>
+        </section>
+      </main>
+
+      <aside class="right-sidebar">
         <section class="card">
-          <h3>모의고사</h3>
-          <div class="row">
+          <div class="section-head">
+            <h3>오답 노트</h3>
+            <span class="badge">{{ wrongAnswers.length }}개</span>
+          </div>
+          <p>{{ wrongAnswers.join(', ') || '아직 없습니다 🎉' }}</p>
+          <button v-if="wrongAnswers.length" class="secondary-button" @click="toggleWrongOnly">
+            {{ viewWrongOnly ? '전체 문제 보기' : '틀린 문제만 보기' }}
+          </button>
+        </section>
+
+        <section class="card">
+          <div class="section-head">
+            <h3>모의고사</h3>
+            <span class="badge">랜덤</span>
+          </div>
+          <div class="stack-buttons">
             <input
               type="number"
               min="1"
@@ -47,9 +113,9 @@
               v-model.number="mockSizeInput"
               placeholder="문항 수"
             />
-            <button @click="startMockExam">시작</button>
+            <button class="primary-button" @click="startMockExam">시작</button>
           </div>
-          <button v-if="isMockMode" @click="finishMockExam">모의고사 종료</button>
+          <button v-if="isMockMode" class="secondary-button mt" @click="finishMockExam">모의고사 종료</button>
           <p v-if="isMockMode" class="muted">진행: {{ current + 1 }} / {{ questions.length }}</p>
 
           <div v-if="lastMockResult" class="result-box">
@@ -59,55 +125,12 @@
         </section>
 
         <section class="card">
-          <h3>틀린 문제 번호</h3>
-          <p>{{ wrongAnswers.join(', ') || '없음' }}</p>
-          <button v-if="wrongAnswers.length" @click="toggleWrongOnly">
-            {{ viewWrongOnly ? '전체 문제 보기' : '틀린 문제만 보기' }}
-          </button>
-        </section>
-      </aside>
-
-      <main class="main-area">
-        <progress :value="safeProgressValue" :max="safeProgressMax"></progress>
-        <p>진행률: {{ safeProgressValue }} / {{ safeProgressMax }}</p>
-
-        <div v-if="question">
-          <p>{{ question.question }}</p>
-          <div v-for="(text, key) in question.choices" :key="key">
-            <button :class="buttonClass(key)" @click="toggleChoice(key)">
-              {{ key }}. {{ text }}
-            </button>
+          <div class="section-head">
+            <h3>학습 통계</h3>
+            <span class="badge">LIVE</span>
           </div>
-
-          <div v-if="showAnswer">
-            <p><strong>정답:</strong> {{ question.answers.join(', ') }}</p>
-            <button @click="showExplanation = true">해설 보기</button>
-          </div>
-
-          <div v-if="showExplanation" class="mt">
-            <p v-for="(exp, i) in question.explanations" :key="i">• {{ exp }}</p>
-          </div>
-
-          <div class="row mt">
-            <button @click="prevQuestion" :disabled="current === 0">이전 문제</button>
-            <button @click="nextQuestion" :disabled="current + 1 >= questions.length">다음 문제</button>
-          </div>
-        </div>
-
-        <div v-else class="card mt-lg">
-          <p>표시할 문제가 없습니다.</p>
-        </div>
-
-        <div class="card mt-lg">
-          <h3>문제 번호 이동</h3>
-          <div class="row">
-            <input type="number" v-model.number="jumpNumber" placeholder="번호 입력" min="1" :max="questions.length || 1" />
-            <button @click="jumpTo">이동</button>
-          </div>
-        </div>
-
-        <div class="card">
-          <p><strong>누적 정답률:</strong> {{ accuracyRate }}% ({{ stats.totalCorrect }}/{{ stats.totalAnswered }})</p>
+          <p><strong>누적 정답률</strong></p>
+          <p class="stats-main">{{ accuracyRate }}% <span class="muted">({{ stats.totalCorrect }}/{{ stats.totalAnswered }})</span></p>
           <progress :value="Number(accuracyRate)" max="100"></progress>
 
           <p class="mt"><strong>최근 {{ recentWindowSize }}문제 정답률:</strong> {{ recentAccuracyRate }}%</p>
@@ -136,8 +159,8 @@
               </li>
             </ul>
           </div>
-        </div>
-      </main>
+        </section>
+      </aside>
     </div>
   </div>
 </template>
@@ -181,7 +204,8 @@ export default {
       mockQuestionIds: [],
       mockAnswered: 0,
       mockCorrect: 0,
-      lastMockResult: null
+      lastMockResult: null,
+      showPassword: false
     }
   },
   computed: {
@@ -496,88 +520,112 @@ export default {
 </script>
 
 <style scoped>
-.app-shell { max-width: 1200px; margin: 0 auto; }
+  .app-shell {
+    max-width: 980px;
+    margin: 2rem auto;
+    padding: 0 1rem 2rem;
+    color: #0f172a;
+  }
+  .eyebrow { margin: 0 0 0.2rem; color: #64748b; font-weight: 700; letter-spacing: 0.06em; font-size: 0.85rem; }
+  .dashboard-title { margin: 0; font-size: 1.7rem; line-height: 1.25; }
 .top-header {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  margin-bottom: 12px;
-  padding: 8px 12px;
-  border: 1px solid #d1d5db;
-  border-radius: 8px;
-  background: #fff;
+  gap: 1rem;
+  margin-bottom: 16px;
 }
+.logout-button { min-width: 220px; }
 .content-layout {
   display: grid;
-  grid-template-columns: 280px 1fr;
+  grid-template-columns: minmax(0, 1fr) 320px;
   gap: 1rem;
 }
-.left-sidebar { display: flex; flex-direction: column; gap: 0.8rem; }
+.right-sidebar { display: flex; flex-direction: column; gap: 0.8rem; }
 .main-area { min-width: 0; }
 .card {
-  padding: 0.8rem;
-  border: 1px solid #d1d5db;
-  border-radius: 8px;
-  background: #fff;
+  padding: 1rem;
+  border: 1px solid #cbd5e1;
+  border-radius: 18px;
+  background: #f8fafc;
 }
+.question-card { background: #f8fafc; }
+.question-copy { font-size: 1.25rem; line-height: 1.5; font-weight: 700; margin: 0.9rem 0; }
+.progress-chip { display: inline-flex; padding: 0.15rem 0.7rem; border-radius: 999px; background: #bfdbfe; color: #1d4ed8; font-size: 0.9rem; font-weight: 700; margin-bottom: 0.45rem; }
 .result-box {
   margin-top: 0.8rem;
   padding-top: 0.8rem;
   border-top: 1px dashed #d1d5db;
 }
 .login-panel {
-  max-width: 420px;
-  margin: 2rem auto;
+  max-width: 520px;
+  margin: 9rem auto;
   padding: 1.25rem;
-  border: 1px solid #d1d5db;
-  border-radius: 12px;
-  background: #fff;
-  box-shadow: 0 6px 20px rgba(15, 23, 42, 0.06);
+  border: 1px solid #cbd5e1;
+  border-radius: 20px;
+  background: #f8fafc;
 }
-.login-title { margin: 0 0 0.4rem; }
+.login-title { margin: 0 0 0.4rem; font-size: 1.9rem; line-height: 1.25; }
+.login-copy { margin-top: 0; margin-bottom: 0.85rem; font-size: 0.98rem; }
 .login-form { display: grid; gap: 0.55rem; margin-top: 0.8rem; }
-.login-label { font-size: 0.9rem; font-weight: 600; color: #374151; }
+.login-label { font-size: 0.95rem; font-weight: 700; color: #334155; }
 .login-input {
   width: 100%;
   min-height: 44px;
   padding: 0.65rem 0.75rem;
-  border: 1px solid #d1d5db;
-  border-radius: 8px;
+  border: 1px solid #bfdbfe;
+  border-radius: 14px;
   box-sizing: border-box;
+  font-size: 1rem;
 }
-.login-input:focus { outline: 2px solid #93c5fd; outline-offset: 1px; }
-.login-button {
-  width: 100%;
+.login-input:focus { outline: none; border-color: #93c5fd; }
+button {
   min-height: 44px;
-  margin-top: 0.4rem;
-  border: 0;
-  border-radius: 8px;
-  background: #2563eb;
-  color: #fff;
+  border-radius: 14px;
+  border: 1px solid #bfdbfe;
+  background: #e2e8f0;
+  color: #1e293b;
   font-weight: 600;
+  padding: 0.55rem 0.85rem;
 }
+.primary-button, .login-button { width: 100%; margin-top: 0.4rem; border: 0; background: #2952cc; color: #fff; }
+.secondary-button { width: 100%; }
 .login-button:disabled { opacity: 0.55; cursor: not-allowed; }
-.row { display: flex; gap: 0.5rem; align-items: center; flex-wrap: wrap; }
+.row { display: flex; gap: 0.5rem; align-items: center; flex-wrap: nowrap; }
+.stack-buttons { display: grid; gap: 0.65rem; }
+.toggle-password { min-width: 88px; }
 .mt { margin-top: 1rem; }
 .mt-lg { margin-top: 2rem; }
-.muted { color: #6b7280; font-size: 0.9rem; }
+.muted { color: #64748b; font-size: 0.9rem; }
+.login-help { margin-top: 0.65rem; }
 .error-message { color: #dc2626; font-size: 0.9rem; margin-top: 0.7rem; }
 .recent-strip { display: flex; gap: 4px; margin: 0.4rem 0 0.8rem; flex-wrap: wrap; }
 .dot { width: 10px; height: 10px; border-radius: 999px; display: inline-block; }
 .dot-correct { background: #10b981; }
 .dot-incorrect { background: #ef4444; }
-button.selected { border: 2px solid #3b82f6; background-color: #e0f2fe; }
+.section-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.5rem; }
+.section-head h3 { margin: 0; }
+.badge { padding: 0.15rem 0.5rem; border-radius: 999px; background: #dbeafe; color: #3343d1; font-size: 0.8rem; font-weight: 700; }
+.stats-main { font-size: 1.4rem; font-weight: 700; margin: 0 0 0.35rem; }
+.choice-button { width: 100%; text-align: left; margin-bottom: 0.55rem; padding: 0.78rem; font-size: 1rem; line-height: 1.45; }
+button.selected { border: 2px solid #3b82f6; background-color: #dbeafe; }
 button.correct { background-color: #d1fae5; border: 2px solid #10b981; }
 button.incorrect { background-color: #fee2e2; border: 2px solid #ef4444; }
+progress { width: 100%; height: 10px; }
 
 @media (max-width: 640px) {
+  .app-shell { margin-top: 1rem; }
   .login-panel {
-    margin: 1rem 0.75rem;
+    margin: 1rem 0.2rem;
     padding: 1rem;
   }
+  .login-title, .dashboard-title { font-size: 1.35rem; }
+  .question-copy { font-size: 1.1rem; }
 }
 
 @media (max-width: 900px) {
   .content-layout { grid-template-columns: 1fr; }
+  .top-header { flex-direction: column; align-items: stretch; }
+  .logout-button { min-width: 0; width: 100%; }
 }
 </style>
