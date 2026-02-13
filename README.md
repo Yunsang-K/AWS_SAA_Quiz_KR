@@ -27,6 +27,7 @@ docker run -p 5173:5173 aws-quiz-app
 
 ## 현재 구현 기능
 
+- 로그인(ID yun ,PassWord yunsang123)
 - 문제 풀이(복수정답 자동 채점)
 - 해설 보기
 - 이전/다음/번호 이동
