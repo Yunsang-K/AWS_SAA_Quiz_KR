@@ -90,3 +90,38 @@ create table if not exists public.quiz_user_state (
 ```
 
 > 데모용 최소 정책 기준입니다. 운영 시 인증 기반 RLS 정책을 권장합니다.
+
+### RLS 설정 체크 (행이 생성되지 않을 때)
+
+`anon` 키만 사용하는 현재 앱 구조에서는 `auth.uid()` 기반 정책을 그대로 쓰면 INSERT가 거부될 수 있습니다.
+
+아래처럼 데모용 정책(또는 동일 의미 정책)인지 확인하세요.
+
+```sql
+alter table public.quiz_user_state enable row level security;
+
+drop policy if exists "Users can insert own state" on public.quiz_user_state;
+drop policy if exists "Users can read own state" on public.quiz_user_state;
+drop policy if exists "Users can update own state" on public.quiz_user_state;
+
+create policy "Users can insert own state"
+on public.quiz_user_state
+for insert
+to anon, authenticated
+with check (true);
+
+create policy "Users can read own state"
+on public.quiz_user_state
+for select
+to anon, authenticated
+using (true);
+
+create policy "Users can update own state"
+on public.quiz_user_state
+for update
+to anon, authenticated
+using (true)
+with check (true);
+```
+
+앱은 upsert 요청 시 `on_conflict=user_id` + `return=representation`을 사용하고, 실패 시 DB 에러 메시지를 화면에 표시합니다.

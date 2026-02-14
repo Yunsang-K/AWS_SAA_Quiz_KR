@@ -394,7 +394,7 @@ export default {
             Authorization: `Bearer ${SUPABASE_ANON_KEY}`
           }
         })
-        if (!res.ok) throw new Error('DB 조회 실패')
+        if (!res.ok) throw new Error(await this.extractDbError(res, 'DB 조회 실패'))
         const rows = await res.json()
         if (rows.length) {
           const row = rows[0]
@@ -413,9 +413,18 @@ export default {
           await this.syncToDb()
         }
         this.dbStatus = '불러오기 완료'
-      } catch {
-        this.dbStatus = '불러오기 실패(로컬 사용 중)'
+      } catch (error) {
+        this.dbStatus = `불러오기 실패(로컬 사용 중): ${error.message}`
       }
+    },
+    async extractDbError(response, fallback) {
+      try {
+        const data = await response.json()
+        if (data?.message) return `${fallback} - ${data.message}`
+      } catch {
+        // json 파싱 실패 시 fallback 사용
+      }
+      return `${fallback} - HTTP ${response.status}`
     },
     async syncToDb() {
       if (!this.dbEnabled || !this.currentUser) return
@@ -430,20 +439,25 @@ export default {
           wrong_policy: this.wrongPolicy,
           mock_exam_history: this.stats.mockExamHistory
         }
-        const res = await fetch(`${SUPABASE_URL}/rest/v1/quiz_user_state`, {
+        const res = await fetch(`${SUPABASE_URL}/rest/v1/quiz_user_state?on_conflict=user_id&select=user_id`, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
             apikey: SUPABASE_ANON_KEY,
             Authorization: `Bearer ${SUPABASE_ANON_KEY}`,
-            Prefer: 'resolution=merge-duplicates'
+            Prefer: 'resolution=merge-duplicates,return=representation'
           },
           body: JSON.stringify(payload)
         })
-        if (!res.ok) throw new Error('DB 저장 실패')
+        if (!res.ok) throw new Error(await this.extractDbError(res, 'DB 저장 실패'))
+
+        const rows = await res.json()
+        if (!Array.isArray(rows) || rows.length === 0) {
+          throw new Error('DB 저장 실패 - upsert 결과가 비어 있습니다. RLS WITH CHECK 정책을 확인하세요.')
+        }
         this.dbStatus = '저장 완료'
-      } catch {
-        this.dbStatus = '저장 실패'
+      } catch (error) {
+        this.dbStatus = `저장 실패: ${error.message}`
       }
     },
     startMockExam() {
