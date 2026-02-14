@@ -50,8 +50,15 @@ docker run -p 5173:5173 aws-quiz-app
   - `awsQuiz:{user}:stats`
   - `awsQuiz:{user}:settings`
   - `awsQuiz:{user}:currentIndex`
+- `awsQuiz:session` (세션 만료 시간 포함)
 
 ### 선택 저장소 (Supabase REST)
+
+### 세션 관리
+- 기본 세션 TTL은 120분이며, `VITE_SESSION_TTL_MINUTES`로 변경할 수 있습니다.
+- 사용자 활동(문제 풀이/이동/설정 저장)마다 세션 만료 시간이 연장됩니다.
+- 만료 시 자동 로그아웃 후 다시 로그인해야 합니다.
+
 환경변수가 설정되면 `quiz_user_state` 테이블과 동기화합니다.
 
 ```bash
@@ -60,6 +67,49 @@ VITE_SUPABASE_ANON_KEY=YOUR_ANON_KEY
 ```
 
 미설정 시 로컬 저장 모드로 동작합니다.
+
+
+### 동기화 동작 원리
+- 로그인 성공 시 `syncFromDb()`가 먼저 실행되어 `quiz_user_state`를 조회합니다.
+- 해당 `user_id` 행이 없으면 빈 통계 상태로 `syncToDb()`를 호출해 초기 행을 생성합니다.
+- 문제 채점(`submitAnswer`)·모의고사 종료·설정 변경 시 `syncToDb()`가 실행되어 upsert 됩니다.
+
+### Supabase RLS 설정 예시 (anon key 사용 시 필수)
+`members` 같은 별도 테이블이 없다면, 템플릿의 join 정책 대신 아래처럼 단순 정책을 사용하세요.
+또한 이 앱은 Supabase Auth 로그인(`auth.uid()`)을 사용하지 않으므로, **"Users can insert/read/update own state" 템플릿(own state 정책)은 동작하지 않을 수 있습니다.**
+
+```sql
+alter table public.quiz_user_state enable row level security;
+
+create policy "quiz_user_state_select_all"
+on public.quiz_user_state
+for select
+to anon
+using (true);
+
+create policy "quiz_user_state_insert_all"
+on public.quiz_user_state
+for insert
+to anon
+with check (true);
+
+create policy "quiz_user_state_update_all"
+on public.quiz_user_state
+for update
+to anon
+using (true)
+with check (true);
+```
+
+> 운영 환경에서는 `to authenticated` + `auth.uid()` 기반으로 좁혀야 안전합니다.
+
+### 정책 점검 쿼리
+```sql
+select schemaname, tablename, policyname, roles, cmd, qual, with_check
+from pg_policies
+where schemaname = 'public' and tablename = 'quiz_user_state'
+order by policyname;
+```
 
 ## Supabase 테이블 예시
 
