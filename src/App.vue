@@ -193,6 +193,7 @@ export default {
       isLoggedIn: false,
       dbEnabled: Boolean(SUPABASE_URL && SUPABASE_ANON_KEY),
       dbStatus: '대기',
+      dbSyncBlocked: false,
       wrongPolicy: 'keep_history',
       stats: {
         totalAnswered: 0,
@@ -384,7 +385,7 @@ export default {
       if (this.current < 0 || this.current >= this.questions.length) this.current = 0
     },
     async syncFromDb() {
-      if (!this.dbEnabled || !this.currentUser) return
+      if (!this.dbEnabled || !this.currentUser || this.dbSyncBlocked) return
       try {
         this.dbStatus = '불러오는 중...'
         const url = `${SUPABASE_URL}/rest/v1/quiz_user_state?user_id=eq.${encodeURIComponent(this.currentUser)}&select=user_id,wrong_answers,total_answered,total_correct,recent_results,wrong_policy,mock_exam_history`
@@ -412,22 +413,30 @@ export default {
         } else {
           await this.syncToDb()
         }
-        this.dbStatus = '불러오기 완료'
+        if (!this.dbSyncBlocked) {
+          this.dbStatus = '불러오기 완료'
+        }
       } catch (error) {
         this.dbStatus = `불러오기 실패(로컬 사용 중): ${error.message}`
       }
     },
+    isRlsPolicyError(message) {
+      if (!message) return false
+      const normalized = String(message).toLowerCase()
+      return normalized.includes('row-level security') || normalized.includes('rls') || normalized.includes('42501')
+    },
     async extractDbError(response, fallback) {
       try {
         const data = await response.json()
-        if (data?.message) return `${fallback} - ${data.message}`
+        const detail = [data?.message, data?.details, data?.hint].filter(Boolean).join(' / ')
+        if (detail) return `${fallback} - ${detail}`
       } catch {
         // json 파싱 실패 시 fallback 사용
       }
       return `${fallback} - HTTP ${response.status}`
     },
     async syncToDb() {
-      if (!this.dbEnabled || !this.currentUser) return
+      if (!this.dbEnabled || !this.currentUser || this.dbSyncBlocked) return
       try {
         this.dbStatus = '저장 중...'
         const payload = {
@@ -457,6 +466,11 @@ export default {
         }
         this.dbStatus = '저장 완료'
       } catch (error) {
+        if (this.isRlsPolicyError(error.message)) {
+          this.dbSyncBlocked = true
+          this.dbStatus = '저장 실패: RLS 정책으로 DB 쓰기가 차단되었습니다. 현재 세션은 로컬 저장 모드로 계속 진행됩니다.'
+          return
+        }
         this.dbStatus = `저장 실패: ${error.message}`
       }
     },
