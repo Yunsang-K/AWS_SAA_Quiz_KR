@@ -171,6 +171,8 @@ import questions from './questions.json'
 const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL
 const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY
 const RECENT_WINDOW_SIZE = 20
+const SESSION_TTL_MINUTES = Number(import.meta.env.VITE_SESSION_TTL_MINUTES || 120)
+const SESSION_TTL_MS = SESSION_TTL_MINUTES * 60 * 1000
 
 export default {
   data() {
@@ -205,7 +207,9 @@ export default {
       mockAnswered: 0,
       mockCorrect: 0,
       lastMockResult: null,
-      showPassword: false
+      showPassword: false,
+      sessionTimeoutId: null,
+      sessionExpiresAt: null
     }
   },
   computed: {
@@ -241,6 +245,62 @@ export default {
         mockExamHistory: payload.mockExamHistory || []
       }
     },
+    getSessionKey() {
+      return 'awsQuiz:session'
+    },
+    createSession(userId) {
+      const expiresAt = Date.now() + SESSION_TTL_MS
+      const payload = { userId, expiresAt }
+      localStorage.setItem(this.getSessionKey(), JSON.stringify(payload))
+      this.sessionExpiresAt = expiresAt
+      this.scheduleSessionTimeout()
+    },
+    clearSessionData() {
+      localStorage.removeItem(this.getSessionKey())
+      this.sessionExpiresAt = null
+      if (this.sessionTimeoutId) {
+        clearTimeout(this.sessionTimeoutId)
+        this.sessionTimeoutId = null
+      }
+    },
+    restoreSession() {
+      const raw = localStorage.getItem(this.getSessionKey())
+      if (!raw) return
+      try {
+        const payload = JSON.parse(raw)
+        if (!payload.userId || !payload.expiresAt || payload.expiresAt <= Date.now()) {
+          this.clearSessionData()
+          return
+        }
+        this.currentUser = payload.userId
+        this.loginId = payload.userId
+        this.isLoggedIn = true
+        this.sessionExpiresAt = payload.expiresAt
+        this.loadUserData()
+        this.applyQuestionSetFromState()
+        this.restoreCurrentIndex()
+        this.scheduleSessionTimeout()
+        if (this.dbEnabled) this.syncFromDb()
+      } catch {
+        this.clearSessionData()
+      }
+    },
+    touchSession() {
+      if (!this.isLoggedIn || !this.currentUser) return
+      this.createSession(this.currentUser)
+    },
+    scheduleSessionTimeout() {
+      if (this.sessionTimeoutId) clearTimeout(this.sessionTimeoutId)
+      if (!this.sessionExpiresAt) return
+      const remaining = this.sessionExpiresAt - Date.now()
+      if (remaining <= 0) {
+        this.logout(true)
+        return
+      }
+      this.sessionTimeoutId = setTimeout(() => {
+        this.logout(true)
+      }, remaining)
+    },
     login() {
       if (!this.loginId || !this.loginPassword) return
       if (!(this.loginId === 'yun' && this.loginPassword === 'yunsang123')) {
@@ -254,18 +314,20 @@ export default {
       this.currentUser = this.loginId
       this.isLoggedIn = true
       localStorage.setItem('awsQuiz:currentUser', this.currentUser)
+      this.createSession(this.currentUser)
       this.loadUserData()
       this.applyQuestionSetFromState()
       this.restoreCurrentIndex()
       if (this.dbEnabled) this.syncFromDb()
     },
-    logout() {
+    logout(isAutoExpired = false) {
       this.isLoggedIn = false
       this.currentUser = ''
       this.loginId = ''
       this.loginPassword = ''
-      this.loginError = ''
+      this.loginError = isAutoExpired ? '세션이 만료되어 자동 로그아웃되었습니다. 다시 로그인해주세요.' : ''
       localStorage.removeItem('awsQuiz:currentUser')
+      this.clearSessionData()
       this.questions = this.fullQuestions
       this.current = 0
       this.resetSession()
@@ -289,6 +351,7 @@ export default {
     },
     persistUserData() {
       if (!this.currentUser) return
+      this.touchSession()
       localStorage.setItem(this.userKey('wrongAnswers'), JSON.stringify(this.wrongAnswers))
       localStorage.setItem(this.userKey('stats'), JSON.stringify(this.stats))
       localStorage.setItem(
@@ -346,6 +409,8 @@ export default {
           this.applyQuestionSetFromState()
           this.restoreCurrentIndex()
           this.persistUserData()
+        } else {
+          await this.syncToDb()
         }
         this.dbStatus = '불러오기 완료'
       } catch {
@@ -521,6 +586,15 @@ export default {
       this.selectedChoices = []
       this.showAnswer = false
       this.showExplanation = false
+    }
+  },
+  mounted() {
+    this.restoreSession()
+  },
+  beforeUnmount() {
+    if (this.sessionTimeoutId) {
+      clearTimeout(this.sessionTimeoutId)
+      this.sessionTimeoutId = null
     }
   }
 }

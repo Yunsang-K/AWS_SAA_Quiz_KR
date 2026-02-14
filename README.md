@@ -50,8 +50,15 @@ docker run -p 5173:5173 aws-quiz-app
   - `awsQuiz:{user}:stats`
   - `awsQuiz:{user}:settings`
   - `awsQuiz:{user}:currentIndex`
+- `awsQuiz:session` (세션 만료 시간 포함)
 
 ### 선택 저장소 (Supabase REST)
+
+### 세션 관리
+- 기본 세션 TTL은 120분이며, `VITE_SESSION_TTL_MINUTES`로 변경할 수 있습니다.
+- 사용자 활동(문제 풀이/이동/설정 저장)마다 세션 만료 시간이 연장됩니다.
+- 만료 시 자동 로그아웃 후 다시 로그인해야 합니다.
+
 환경변수가 설정되면 `quiz_user_state` 테이블과 동기화합니다.
 
 ```bash
@@ -60,6 +67,12 @@ VITE_SUPABASE_ANON_KEY=YOUR_ANON_KEY
 ```
 
 미설정 시 로컬 저장 모드로 동작합니다.
+
+
+### 동기화 동작 원리
+- 로그인 성공 시 `syncFromDb()`가 먼저 실행되어 `quiz_user_state`를 조회합니다.
+- 해당 `user_id` 행이 없으면 빈 통계 상태로 `syncToDb()`를 호출해 초기 행을 생성합니다.
+- 문제 채점(`submitAnswer`)·모의고사 종료·설정 변경 시 `syncToDb()`가 실행되어 upsert 됩니다.
 
 ## Supabase 테이블 예시
 
