@@ -149,7 +149,7 @@
               <option value="remove_on_correct">정답 시 오답 제거</option>
             </select>
           </label>
-          <p class="muted">DB 상태: {{ dbEnabled ? dbStatus : '로컬 저장 모드' }}</p>
+          <p class="muted">DB 상태: {{ dbStatus }}</p>
 
           <div class="mt" v-if="stats.mockExamHistory.length">
             <p><strong>최근 모의고사 이력</strong></p>
@@ -234,9 +234,6 @@ export default {
     }
   },
   methods: {
-    userKey(suffix) {
-      return `awsQuiz:${this.currentUser}:${suffix}`
-    },
     normalizeStats(payload) {
       return {
         totalAnswered: payload.totalAnswered || 0,
@@ -272,15 +269,19 @@ export default {
           this.clearSessionData()
           return
         }
+        if (!this.dbEnabled) {
+          this.clearSessionData()
+          this.dbStatus = 'DB 설정 오류: Supabase 환경변수가 필요합니다.'
+          return
+        }
         this.currentUser = payload.userId
         this.loginId = payload.userId
         this.isLoggedIn = true
         this.sessionExpiresAt = payload.expiresAt
-        this.loadUserData()
         this.applyQuestionSetFromState()
-        this.restoreCurrentIndex()
+        this.current = 0
         this.scheduleSessionTimeout()
-        if (this.dbEnabled) this.syncFromDb()
+        this.syncFromDb()
       } catch {
         this.clearSessionData()
       }
@@ -303,22 +304,23 @@ export default {
     },
     login() {
       if (!this.loginId || !this.loginPassword) return
+      if (!this.dbEnabled) {
+        this.loginError = 'DB 설정이 필요합니다. Supabase 환경변수를 확인해주세요.'
+        return
+      }
       if (!(this.loginId === 'yun' && this.loginPassword === 'yunsang123')) {
         this.loginError = '아이디 또는 비밀번호가 올바르지 않습니다.'
         this.isLoggedIn = false
         this.currentUser = ''
-        localStorage.removeItem('awsQuiz:currentUser')
         return
       }
       this.loginError = ''
       this.currentUser = this.loginId
       this.isLoggedIn = true
-      localStorage.setItem('awsQuiz:currentUser', this.currentUser)
       this.createSession(this.currentUser)
-      this.loadUserData()
       this.applyQuestionSetFromState()
-      this.restoreCurrentIndex()
-      if (this.dbEnabled) this.syncFromDb()
+      this.current = 0
+      this.syncFromDb()
     },
     logout(isAutoExpired = false) {
       this.isLoggedIn = false
@@ -326,47 +328,15 @@ export default {
       this.loginId = ''
       this.loginPassword = ''
       this.loginError = isAutoExpired ? '세션이 만료되어 자동 로그아웃되었습니다. 다시 로그인해주세요.' : ''
-      localStorage.removeItem('awsQuiz:currentUser')
       this.clearSessionData()
       this.questions = this.fullQuestions
       this.current = 0
       this.resetSession()
     },
-    loadUserData() {
-      const wrong = localStorage.getItem(this.userKey('wrongAnswers'))
-      const stats = localStorage.getItem(this.userKey('stats'))
-      const settings = localStorage.getItem(this.userKey('settings'))
-
-      this.wrongAnswers = wrong ? JSON.parse(wrong) : []
-      this.stats = this.normalizeStats(stats ? JSON.parse(stats) : {})
-
-      const parsed = settings ? JSON.parse(settings) : {}
-      this.wrongPolicy = parsed.wrongPolicy || 'keep_history'
-      this.viewWrongOnly = Boolean(parsed.viewWrongOnly)
-      this.isMockMode = Boolean(parsed.isMockMode)
-      this.mockQuestionIds = parsed.mockQuestionIds || []
-      this.mockAnswered = parsed.mockAnswered || 0
-      this.mockCorrect = parsed.mockCorrect || 0
-      this.lastMockResult = parsed.lastMockResult || null
-    },
     persistUserData() {
       if (!this.currentUser) return
       this.touchSession()
-      localStorage.setItem(this.userKey('wrongAnswers'), JSON.stringify(this.wrongAnswers))
-      localStorage.setItem(this.userKey('stats'), JSON.stringify(this.stats))
-      localStorage.setItem(
-        this.userKey('settings'),
-        JSON.stringify({
-          wrongPolicy: this.wrongPolicy,
-          viewWrongOnly: this.viewWrongOnly,
-          isMockMode: this.isMockMode,
-          mockQuestionIds: this.mockQuestionIds,
-          mockAnswered: this.mockAnswered,
-          mockCorrect: this.mockCorrect,
-          lastMockResult: this.lastMockResult
-        })
-      )
-      localStorage.setItem(this.userKey('currentIndex'), String(this.current))
+      this.syncToDb()
     },
     applyQuestionSetFromState() {
       if (this.isMockMode && this.mockQuestionIds.length) {
@@ -377,11 +347,6 @@ export default {
       this.questions = this.viewWrongOnly
         ? this.fullQuestions.filter(q => this.wrongAnswers.includes(q.id))
         : this.fullQuestions
-    },
-    restoreCurrentIndex() {
-      const saved = Number(localStorage.getItem(this.userKey('currentIndex')) || 0)
-      this.current = Number.isInteger(saved) ? saved : 0
-      if (this.current < 0 || this.current >= this.questions.length) this.current = 0
     },
     async syncFromDb() {
       if (!this.dbEnabled || !this.currentUser) return
@@ -407,20 +372,20 @@ export default {
           })
           this.wrongPolicy = row.wrong_policy || 'keep_history'
           this.applyQuestionSetFromState()
-          this.restoreCurrentIndex()
-          this.persistUserData()
+          this.current = 0
         } else {
           await this.syncToDb()
         }
         this.dbStatus = '불러오기 완료'
       } catch (error) {
-        this.dbStatus = `불러오기 실패(로컬 사용 중): ${error.message}`
+        this.dbStatus = `불러오기 실패: ${error.message}`
       }
     },
     async extractDbError(response, fallback) {
       try {
         const data = await response.json()
-        if (data?.message) return `${fallback} - ${data.message}`
+        const detail = [data?.message, data?.details, data?.hint].filter(Boolean).join(' / ')
+        if (detail) return `${fallback} - ${detail}`
       } catch {
         // json 파싱 실패 시 fallback 사용
       }
@@ -505,7 +470,6 @@ export default {
       this.current = 0
       this.resetSession()
       this.persistUserData()
-      if (this.dbEnabled) this.syncToDb()
     },
     toggleWrongOnly() {
       this.viewWrongOnly = !this.viewWrongOnly
@@ -560,7 +524,6 @@ export default {
       }
 
       this.persistUserData()
-      if (this.dbEnabled) this.syncToDb()
     },
     buttonClass(choice) {
       if (!this.showAnswer) return this.selectedChoices.includes(choice) ? 'selected' : ''
@@ -603,6 +566,7 @@ export default {
     }
   },
   mounted() {
+    if (!this.dbEnabled) this.dbStatus = 'DB 설정 오류: Supabase 환경변수가 필요합니다.'
     this.restoreSession()
   },
   beforeUnmount() {

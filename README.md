@@ -45,28 +45,24 @@ docker run -p 5173:5173 aws-quiz-app
 ## 데이터 저장 구조
 
 ### 기본 저장소
-- `localStorage` 사용자 분리 키 사용
-  - `awsQuiz:{user}:wrongAnswers`
-  - `awsQuiz:{user}:stats`
-  - `awsQuiz:{user}:settings`
-  - `awsQuiz:{user}:currentIndex`
-- `awsQuiz:session` (세션 만료 시간 포함)
+- 학습 데이터는 Supabase `quiz_user_state` 테이블에만 저장됩니다.
+- `localStorage`에는 세션(`awsQuiz:session`) 만료 시간만 저장됩니다.
 
-### 선택 저장소 (Supabase REST)
+### 저장소 (Supabase REST)
 
 ### 세션 관리
 - 기본 세션 TTL은 120분이며, `VITE_SESSION_TTL_MINUTES`로 변경할 수 있습니다.
 - 사용자 활동(문제 풀이/이동/설정 저장)마다 세션 만료 시간이 연장됩니다.
 - 만료 시 자동 로그아웃 후 다시 로그인해야 합니다.
 
-환경변수가 설정되면 `quiz_user_state` 테이블과 동기화합니다.
+앱 실행 시 Supabase 환경변수가 필수이며, 모든 학습 데이터는 `quiz_user_state` 테이블과 동기화됩니다.
 
 ```bash
 VITE_SUPABASE_URL=https://YOUR_PROJECT.supabase.co
 VITE_SUPABASE_ANON_KEY=YOUR_ANON_KEY
 ```
 
-미설정 시 로컬 저장 모드로 동작합니다.
+미설정 시 로그인/동기화가 동작하지 않습니다.
 
 
 ### 동기화 동작 원리
